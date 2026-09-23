@@ -25,7 +25,7 @@
     - PC, zero register(?), N x general purpose registers where N is dependent on the max required by any protocol
     - Estimate clock speed based on protocols
     - Decided against pipelining due to area and timing constraints
-        - Given the limited area, the additional inter-stage registers would require considerable area that we cannot guarantee
+        - Given the limited area, the additional inter-stage registers would require considerable area
         - We are not concerned with instruction throughput but precise, cycle-accurate execution
 
 ## 4 Microarchitecture Topology
