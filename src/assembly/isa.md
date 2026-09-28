@@ -1,81 +1,76 @@
 # Protocol Emulator ISA
 
 ## Conventions
-- Word: 16-bit instruction, 8 (or 12) MHz+ core clock, all instrs 1 cycle unless noted
-- Registers: r0-r3 (8-bit GP), ISR (8-bit in shift), OSR (8-bit out shift), PC, STATUS flags (Z, C)
-- Pins: P0-P7 (output data), direction register DIR (1 = drive, 0 = release/high-Z)
-- Every instruction has a 3-bit `delay` field (0-7 extra cycles, PIO-style)
-- Every instruction has a `side-set` field (writes pins in parallel)
+- Word: 16-bit, each instruction = 1 cycle + `delay` extra cycles (0-15)
+- Registers: r0-r3 (8-bit), ISR, OSR (8-bit shift regs), PC, flag Z
+- Pins: P0-P7, DIR register (1 = drive, 0 = release)
+- Every instruction carries: `delay[3:0]` (4b) and `side` (1b, drives P0 = SCK; 0 = leave, 1 = toggle/drive per config)
+- Pure delay = `NOP [n]`. Pin-only write = `NOP side=x`. No WAIT/SET instructions.
+- Runtime baud control = clock divider config register (not an instruction)
+- Jumps are PC-relative: target = PC + sign_extend(offset), offset is 6-bit signed (-32..+31)
 
-## 1. Control Flow
-| Mnemonic | Operands | Cycles | Description |
-|---|---|---|---|
-| NOP | - | 1 | No operation (delay slot filler) |
-| JMP | addr | 1 | Unconditional jump |
-| JZ / JNZ | addr | 1 | Jump if Z flag set / clear |
-| DJNZ | rN, addr | 1 | Decrement rN, jump if not zero (bit counters) |
-| JPIN | pin, level, addr | 1 | Jump if pin == level (ACK check, bus idle check) |
-| CALL / RET | addr / - | 1 | Subroutine call/return (small hw stack, depth 2-4) |
-| HALT | - | - | Stop core until external restart |
+## 1. Control Flow (5 ops)
+| Mnemonic | Operands | Description |
+|---|---|---|
+| NOP | - | Carrier for delay / side-set |
+| JMP | cond[2:0], off[5:0] | PC-relative. cond = always / Z / !Z / pin==1 / pin==0. `JMP always, -1` = halt-in-place |
+| DJNZ | rN[1:0], off[3:0] | Decrement rN, PC-relative jump if nonzero; 4-bit signed offset (-8..+7), enough for tight bit loops |
+| CALL/RET | addr[4:0] / - | Absolute 5-bit target (32-word page), mode bit selects CALL vs RET, hw stack depth 2 |
+| HALT | - | Removed; use `JMP always, -1` |
 
-## 2. Data Movement and ALU
-| Mnemonic | Operands | Cycles | Description |
-|---|---|---|---|
-| MOV | rD, rS | 1 | Register copy |
-| LDI | rD, imm8 | 1 | Load immediate |
-| MOV | OSR, rS / rD, ISR | 1 | Move to/from shift registers |
-| ADD / SUB | rD, rS/imm | 1 | Arithmetic, sets Z/C |
-| AND / OR / XOR | rD, rS/imm | 1 | Logic, sets Z (XOR used for CRC, NRZI) |
-| SHL / SHR | rD, n | 1 | Shift, carry out to C |
-| CMP | rA, rB/imm | 1 | Set flags, no writeback |
+## 2. Data Movement and ALU (4 ops)
+| Mnemonic | Operands | Description |
+|---|---|---|
+| LDI | rD, imm | Load immediate |
+| MOV | dst, src | rN / OSR / ISR / PINS (absorbs RDP, register side of PULL/PUSH) |
+| XOR/AND | rD, rS/imm | One op with mode bit, sets Z (NRZI, CRC, masking, parity) |
+| SHR | rD | Shift right by 1, LSB into Z (bit tests); shift-by-n via repeat |
 
-## 3. Pin I/O (the core of the chip)
-| Mnemonic | Operands | Cycles | Description |
-|---|---|---|---|
-| SET | pin, 0/1 | 1 | Drive single pin |
-| SETM | mask, value | 1 | Atomic multi-pin write (USB D+/D- same cycle) |
-| DIR | mask, value | 1 | Set pin direction (I2C release vs drive low) |
-| OUT | pin, rS[bit] | 1 | Drive pin with a bit of a register |
-| OUTS | pin, n | 1 | Shift n bits from OSR onto pin (LSB first), OSR >>= n |
-| IN | pin | 1 | Sample pin into ISR MSB, ISR >>= 1 |
-| INS | pin, n | n | Sample n bits into ISR |
-| RDP | rD, mask | 1 | Read pin bus (masked) into register |
+## 3. Pin I/O (4 ops)
+| Mnemonic | Operands | Description |
+|---|---|---|
+| PINS | src, mask | Write pins from imm / reg / OSR bit0 with mask (replaces SET, SETM, OUT, OUTS) |
+| DIR | mask, value | Pin direction control (I2C release vs drive low) |
+| IN | pin/src | Sample into ISR, shift right (replaces IN, INS, RDP; repeat for n bits) |
+| WAITP | pin, level/edge | Stall until pin level or edge (replaces WPIN, WEDGE) |
 
-## 4. Timing
-| Mnemonic | Operands | Cycles | Description |
-|---|---|---|---|
-| WAIT | n | n+1 | Idle n cycles (baud/bit timing) |
-| WAITR | rN | rN+1 | Idle for register-specified cycles (runtime baud) |
-| WPIN | pin, level | var | Stall until pin == level (start bit, clock stretch) |
-| WEDGE | pin, rise/fall | var | Stall until edge detected (USB resync) |
-| TMR | n | 1 | Start hw timer for n cycles (non-blocking) |
-| WTMR | - | var | Stall until timer expires (fixed-rate loops with work inside) |
-| TIMEOUT | n | 1 | Set watchdog: jump to timeout vector if WPIN/WEDGE exceeds n cycles |
+## 4. Timing (0 ops)
+| Mechanism | Description |
+|---|---|
+| `delay[3:0]` field | 0-15 extra cycles on any instruction (replaces WAIT) |
+| Clock divider config | Runtime-programmable bit period (replaces WAITR) |
+| Watchdog config | Timeout on WAITP via config register (replaces TIMEOUT) |
+| Dropped | TMR, WTMR |
 
-## 5. Protocol Assist (hardware accelerators)
-| Mnemonic | Operands | Cycles | Description |
-|---|---|---|---|
-| NRZI | pin, rS[bit] | 1 | NRZI encode: toggle line if bit==0, hold if 1 (USB) |
-| STUFF | - | 1 | Track consecutive 1s; if count==6, insert 0 and stall shifter (USB) |
-| DESTUFF | - | 1 | RX inverse: drop stuffed 0 after six 1s |
-| CRC | poly_sel, rS[bit] | 1 | Update CRC reg with one bit (CRC5 for USB tokens, CRC16 for data) |
-| CRCRD | rD | 1 | Read CRC register, optionally inverted |
-| CRCRST | init | 1 | Reset CRC to init value (USB: all 1s) |
-| PAR | rD, rS | 1 | Compute parity of rS into rD (UART parity, optional) |
+## 5. Protocol Assist (3 ops)
+| Mnemonic | Operands | Description |
+|---|---|---|
+| NRZI | bit_src | Toggle output if bit==0 (USB); bit stuffing enabled by config bit |
+| CRC | mode | Sub-modes: update(bit) / read / reset / poly select (CRC5, CRC16) |
+| FIFO | push/pull | ISR -> RX FIFO / TX FIFO -> OSR; autopush/pull threshold via config |
 
-## 6. Autopush / Autopull (optional, PIO-style)
-| Mnemonic | Operands | Cycles | Description |
-|---|---|---|---|
-| PULL | - | 1 | Load OSR from TX FIFO, block if empty |
-| PUSH | - | 1 | Push ISR to RX FIFO, block if full |
-| (config) | threshold n | - | Auto PULL when OSR empty after n bits; auto PUSH when ISR reaches n bits |
+## 6. Encoding Budget (16 bits)
+| Field | Bits |
+|---|---|
+| delay | 4 |
+| side-set | 1 |
+| opcode | 4 (15 ops after removing HALT) |
+| operands | 7 |
 
-## 7. Instruction to protocol coverage
+Operand layouts:
+| Op | Layout (7 bits) |
+|---|---|
+| JMP | cond[2:0] + off[3:0]? Too small: use cond[0:0] variants (see below) |
+| DJNZ | rN[1:0] + off[4:0] (5-bit signed, -16..+15) |
+| CALL/RET | mode[0] + addr[5:0] (64-word absolute) |
+| LDI | rD[1:0] + imm[4:0] |
+
+## 8. Instruction to Protocol Coverage
 | Protocol | Key instructions used |
 |---|---|
-| UART TX | SET, OUTS, WAIT, DJNZ, PAR |
-| UART RX | WPIN, WAIT, IN, DJNZ, PUSH |
-| SPI | SET, OUT, IN, DJNZ, side-set (SCK + MOSI in one instr) |
-| I2C | DIR, SET, WPIN (clock stretch), JPIN (ACK), TIMEOUT |
-| USB LS TX | SETM, NRZI, STUFF, CRC, OUTS, PULL |
-| USB LS RX | WEDGE, IN, DESTUFF, CRC, PUSH |
+| UART TX | PINS, NOP [n], DJNZ, SHR, MOV OSR, FIFO |
+| UART RX | WAITP, NOP [n], IN, DJNZ, FIFO |
+| SPI | PINS + side-set (SCK), IN, DJNZ, FIFO |
+| I2C | DIR, PINS, WAITP (clock stretch), JMP pin (ACK), watchdog config |
+| USB LS TX | PINS (D+/D- mask), NRZI, CRC, FIFO, stuffing config |
+| USB LS RX | WAITP (edge), IN, CRC, FIFO, destuff config |
