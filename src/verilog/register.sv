@@ -7,6 +7,7 @@ module register #(
         input   logic                           rst_n,
         input   logic                           we,
         input   logic   [DATA_WIDTH-1:0]        data_i,
+        
         output  logic   [DATA_WIDTH-1:0]        data_o
 );
 
