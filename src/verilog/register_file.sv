@@ -1,8 +1,9 @@
 `default_nettype none
 
 module register_file #(
-        parameter int unsigned ADDR_WIDTH = 4,
-        parameter int unsigned DATA_WIDTH = 16
+        parameter int unsigned NUM_REGS         = 16,
+        parameter int unsigned DATA_WIDTH       = 16,
+        localparam int unsigned ADDR_WIDTH      = $clog2(NUM_REGS)
 ) (
         input   logic                           clk,
         input   logic                           rst_n,
@@ -20,33 +21,42 @@ module register_file #(
 // Signal Declaration
 // ------------------------------------------------------------------
 
-        // can I generate a variable number of signals based on addr width?
+        logic [NUM_REGS-1:0]      reg_we;
+        logic [DATA_WIDTH-1:0]    reg_data [NUM_REGS];
 
 // ------------------------------------------------------------------
 // Write Enable
 // ------------------------------------------------------------------
 
+
         always_comb begin : write_enable
-                case(write_addr_i)
-                        // can I do this using generate so that it's variable to addr width?
-                endcase
+                reg_we = '0;
+                if (write_addr_i < NUM_REGS)
+                        reg_we[write_addr_i] = we;
         end
 
 // ------------------------------------------------------------------
 // Registers
 // ------------------------------------------------------------------
 
-        // use generate block to generate enough registers for addr width?
-        // connect via signals declared
+        for (genvar i = 0; i < NUM_REGS; i++) begin : gen_regs
+                register #(
+                        .DATA_WIDTH     (DATA_WIDTH)
+                ) u_reg (
+                        .clk            (clk),
+                        .rst_n          (rst_n),
+                        .we             (reg_we[i]),
+                        .data_i         (write_data_i),
+                        .data_o         (reg_data[i])
+                );
+        end 
 
 // ------------------------------------------------------------------
 // Output Read Select
 // ------------------------------------------------------------------
 
-        // possible to make module that takes in all regs current data
-        // and assigns read_data1_o and read_data2_o accordingly
-        // can I use generate to make this variable to addr_width? 
-
+        assign read_data1_o = reg_data[read_addr1_i];
+        assign read_data2_o = reg_data[read_addr2_i];
 
 endmodule : register_file
 
