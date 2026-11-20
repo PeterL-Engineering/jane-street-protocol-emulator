@@ -2,9 +2,7 @@
 
 module logicval
         import isa_pkg::*;
-#(
-
-) (
+(
         input   cond_e cond_i,
         input   logic  z_flag_i,
         input   logic  jmp_pin_i,
