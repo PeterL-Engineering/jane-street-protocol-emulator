@@ -27,6 +27,6 @@ always_comb begin : cond_select
         endcase
 end
 
-endmodule : logicval
+endmodule : cond_eval
 
 `default_nettype wire
