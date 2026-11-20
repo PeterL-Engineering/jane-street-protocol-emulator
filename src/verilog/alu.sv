@@ -33,7 +33,18 @@ module alu
 // Output Select
 // ------------------------------------------------------------------
 
-
+        always_comb begin : output_select
+                case(alu_fn_i)
+                        ALU_ADD:        data_o = add_result;   
+                        ALU_SUB:        data_o = sub_result;
+                        ALU_AND:        data_o = and_result;
+                        ALU_OR:         data_o = or_result;
+                        ALU_XOR:        data_o = xor_result;
+                        ALU_CMP:        data_o = cmp_result;
+                        ALU_NOT:        data_o = not_result;
+                        default:        data_o = 'b0;
+                endcase
+        end
 
 endmodule : alu
 
