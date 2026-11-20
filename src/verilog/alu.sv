@@ -1,3 +1,5 @@
+`default_nettype none
+
 module alu
         import isa_pkg::*;
 #(
@@ -27,14 +29,22 @@ module alu
 // Arithmetic/Logical Assignment
 // ------------------------------------------------------------------
 
+        assign add_result = data1_i + data2_i;
+        assign sub_result = data1_i - data2_i;
+        assign and_result = data1_i & data2_i;
+        assign or_result  = data1_i | data2_i;
+        assign xor_result = data1_i ^ data2_i;
+        assign cmp_result = sub_result;
+        assign not_result = ~data1_i;
 
+        assign zero_o = (data_o == '0);
 
 // ------------------------------------------------------------------
 // Output Select
 // ------------------------------------------------------------------
 
         always_comb begin : output_select
-                case(alu_fn_i)
+                case (alu_fn_i)
                         ALU_ADD:        data_o = add_result;   
                         ALU_SUB:        data_o = sub_result;
                         ALU_AND:        data_o = and_result;
@@ -42,7 +52,7 @@ module alu
                         ALU_XOR:        data_o = xor_result;
                         ALU_CMP:        data_o = cmp_result;
                         ALU_NOT:        data_o = not_result;
-                        default:        data_o = 'b0;
+                        default:        data_o = '0;
                 endcase
         end
 
