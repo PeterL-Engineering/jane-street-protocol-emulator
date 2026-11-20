@@ -1,7 +1,7 @@
 `default_nettype none
 
 module register #(
-        parameter int unsigned DATA_WIDTH = 16
+        parameter int unsigned DATA_WIDTH = 8
 ) (
         input   logic                           clk,
         input   logic                           rst_n,

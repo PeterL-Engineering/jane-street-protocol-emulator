@@ -1,8 +1,8 @@
 `default_nettype none
 
 module register_file #(
-        parameter int unsigned NUM_REGS         = 16,
-        parameter int unsigned DATA_WIDTH       = 16,
+        parameter int unsigned NUM_REGS         = 4,
+        parameter int unsigned DATA_WIDTH       = 8,
         localparam int unsigned ADDR_WIDTH      = $clog2(NUM_REGS)
 ) (
         input   logic                           clk,
