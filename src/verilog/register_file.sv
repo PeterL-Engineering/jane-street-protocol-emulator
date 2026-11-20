@@ -28,7 +28,6 @@ module register_file #(
 // Write Enable
 // ------------------------------------------------------------------
 
-
         always_comb begin : write_enable
                 reg_we = '0;
                 if (write_addr_i < NUM_REGS)
